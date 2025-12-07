@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": "./",
+    "paths": {
+      "@libs/*": ["libs/*"],
+      "@/*": ["src/*"],
+      "@configs/*": ["src/configs/*"],
+      "@constants/*": ["src/constants/*"]
+    },
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    // ... 기타 설정
+  }
+}
