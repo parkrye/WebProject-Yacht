@@ -1,30 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: CLAUDE.md AI 개발 가이드 문서 추가\n\n- 프로젝트 개요 및 기술 스택 정리\n- TypeScript, NestJS, Tailwind CSS 코딩 규칙 정의\n- 하드코딩 금지 및 SOLID 원칙 가이드라인 포함\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(npm install:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(mkdir:*)",
       "Bash(npx tsc:*)",
-      "Bash(npm run start:dev:*)",
-      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_OwningProcess -Force }\")",
-      "Bash(taskkill:*)",
-      "Bash(exit 0)",
-      "Bash(netstat:*)",
-      "Bash(findstr:*)",
-      "Bash(powershell -Command \"Stop-Process -Id 30660 -Force\")",
-      "Bash(curl:*)",
-      "Bash(GAME_ID=\"e1cd189a-cdde-43ca-bd88-bb0ec165880b\")",
-      "Bash(GAME_ID=\"88bf331e-0f32-42c7-a01e-9200777b5b68\")",
-      "Bash(npm create:*)",
-      "Bash(npm run dev:*)",
-      "Bash(dir nul)",
-      "Bash(rm:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(firebase:*)",
       "Bash(npm run build:*)",
-      "Bash(xcopy:*)",
-      "Bash(xcopy /Y \"apps\\backend\\app.module.ts\" \"functions\\src\"\" && xcopy /E /I /Y \"libs\" \"functionssrclibs \")"
+      "Bash(npx firebase deploy:*)",
+      "Bash(ls -la \"C:\\Users\\illuni_61\\personal projects\\VibeCodingWebProject\\apps\\frontend\\dist\\audio\\bgm\"\" 2>&1 || echo \"디렉토리가 없습니다 \")",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: UI/UX 개선 및 AI 봇 강화\n\n주요 변경사항:\n- 주사위 초기값 [6,6,6,6,6]으로 변경, 턴 전환 시 이전 값 유지\n- 주사위 값 0 방지 (항상 1-6 사이만 표시)\n- 다른 플레이어 주사위 굴림 시 애니메이션/SFX 동기화\n- 채팅 UI: 6개 카테고리 x 6개 메시지, 육각형 배치\n- AI 봇: 상단 보너스(63점) 고려, 기대값 기반 의사결정, 희생 전략 추가\n- 점수 계산 단일 소스화 (calculateScore 함수 통합)\n- 홈/로비 페이지 추가, BGM 자동 재생\n- 모바일 반응형 UI 개선\n- 게임 규칙 및 개발 가이드 문서 업데이트\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
