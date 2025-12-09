@@ -1,0 +1,328 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.GameEngine = exports.ScoreCategory = void 0;
+const game_repository_1 = require("./game.repository");
+const GAME_CONSTANTS = {
+    MAX_PLAYERS: 4,
+    MIN_PLAYERS: 1,
+    DICE_COUNT: 5,
+    MAX_ROLLS_PER_TURN: 3,
+    DICE_MIN_VALUE: 1,
+    DICE_MAX_VALUE: 6,
+};
+const SCORE_CONSTANTS = {
+    YACHT_BONUS: 50,
+};
+var ScoreCategory;
+(function (ScoreCategory) {
+    ScoreCategory["ONES"] = "ones";
+    ScoreCategory["TWOS"] = "twos";
+    ScoreCategory["THREES"] = "threes";
+    ScoreCategory["FOURS"] = "fours";
+    ScoreCategory["FIVES"] = "fives";
+    ScoreCategory["SIXES"] = "sixes";
+    ScoreCategory["THREE_OF_A_KIND"] = "threeOfAKind";
+    ScoreCategory["FOUR_OF_A_KIND"] = "fourOfAKind";
+    ScoreCategory["FULL_HOUSE"] = "fullHouse";
+    ScoreCategory["SMALL_STRAIGHT"] = "smallStraight";
+    ScoreCategory["LARGE_STRAIGHT"] = "largeStraight";
+    ScoreCategory["CHOICE"] = "choice";
+    ScoreCategory["YACHT"] = "yacht";
+})(ScoreCategory || (exports.ScoreCategory = ScoreCategory = {}));
+function createEmptyScoreCard() {
+    return {
+        [ScoreCategory.ONES]: null,
+        [ScoreCategory.TWOS]: null,
+        [ScoreCategory.THREES]: null,
+        [ScoreCategory.FOURS]: null,
+        [ScoreCategory.FIVES]: null,
+        [ScoreCategory.SIXES]: null,
+        [ScoreCategory.THREE_OF_A_KIND]: null,
+        [ScoreCategory.FOUR_OF_A_KIND]: null,
+        [ScoreCategory.FULL_HOUSE]: null,
+        [ScoreCategory.SMALL_STRAIGHT]: null,
+        [ScoreCategory.LARGE_STRAIGHT]: null,
+        [ScoreCategory.CHOICE]: null,
+        [ScoreCategory.YACHT]: null,
+    };
+}
+function createDiceSet() {
+    return {
+        values: Array(GAME_CONSTANTS.DICE_COUNT).fill(0),
+        kept: Array(GAME_CONSTANTS.DICE_COUNT).fill(false),
+        rollCount: 0,
+    };
+}
+function rollSingleDice() {
+    return (Math.floor(Math.random() *
+        (GAME_CONSTANTS.DICE_MAX_VALUE - GAME_CONSTANTS.DICE_MIN_VALUE + 1)) + GAME_CONSTANTS.DICE_MIN_VALUE);
+}
+function rollDice(diceSet) {
+    if (diceSet.rollCount >= GAME_CONSTANTS.MAX_ROLLS_PER_TURN) {
+        return diceSet;
+    }
+    const newValues = diceSet.values.map((value, index) => {
+        if (diceSet.kept[index]) {
+            return value;
+        }
+        return rollSingleDice();
+    });
+    return {
+        ...diceSet,
+        values: newValues,
+        rollCount: diceSet.rollCount + 1,
+    };
+}
+function getDiceCounts(values) {
+    const counts = new Map();
+    for (const value of values) {
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    return counts;
+}
+function calculateScore(category, diceValues) {
+    const counts = getDiceCounts(diceValues);
+    const sorted = [...diceValues].sort((a, b) => a - b);
+    const unique = [...new Set(sorted)];
+    const sum = diceValues.reduce((s, v) => s + v, 0);
+    switch (category) {
+        case ScoreCategory.ONES:
+            return diceValues.filter((v) => v === 1).length * 1;
+        case ScoreCategory.TWOS:
+            return diceValues.filter((v) => v === 2).length * 2;
+        case ScoreCategory.THREES:
+            return diceValues.filter((v) => v === 3).length * 3;
+        case ScoreCategory.FOURS:
+            return diceValues.filter((v) => v === 4).length * 4;
+        case ScoreCategory.FIVES:
+            return diceValues.filter((v) => v === 5).length * 5;
+        case ScoreCategory.SIXES:
+            return diceValues.filter((v) => v === 6).length * 6;
+        case ScoreCategory.THREE_OF_A_KIND:
+            for (const [value, count] of counts.entries()) {
+                if (count >= 3)
+                    return value * 3;
+            }
+            return 0;
+        case ScoreCategory.FOUR_OF_A_KIND:
+            for (const [value, count] of counts.entries()) {
+                if (count >= 4)
+                    return value * 4;
+            }
+            return 0;
+        case ScoreCategory.FULL_HOUSE:
+            const countValues = Array.from(counts.values());
+            if ((countValues.includes(3) && countValues.includes(2)) ||
+                countValues.includes(5)) {
+                return sum;
+            }
+            return 0;
+        case ScoreCategory.SMALL_STRAIGHT:
+            const smallStraights = [
+                [1, 2, 3, 4],
+                [2, 3, 4, 5],
+                [3, 4, 5, 6],
+            ];
+            for (const straight of smallStraights) {
+                if (straight.every((v) => unique.includes(v))) {
+                    return straight.reduce((s, v) => s + v, 0);
+                }
+            }
+            return 0;
+        case ScoreCategory.LARGE_STRAIGHT:
+            const largeStraights = [
+                [1, 2, 3, 4, 5],
+                [2, 3, 4, 5, 6],
+            ];
+            for (const straight of largeStraights) {
+                if (straight.every((v) => unique.includes(v))) {
+                    return sum;
+                }
+            }
+            return 0;
+        case ScoreCategory.CHOICE:
+            return sum;
+        case ScoreCategory.YACHT:
+            for (const count of counts.values()) {
+                if (count === 5)
+                    return SCORE_CONSTANTS.YACHT_BONUS;
+            }
+            return 0;
+        default:
+            return 0;
+    }
+}
+class GameEngine {
+    constructor(gameId) {
+        const now = Date.now();
+        this.gameState = {
+            id: gameId,
+            players: [],
+            currentPlayerIndex: 0,
+            diceSet: createDiceSet(),
+            phase: game_repository_1.GamePhase.WAITING,
+            round: 1,
+            createdAt: now,
+            updatedAt: now,
+        };
+    }
+    getState() {
+        return this.gameState;
+    }
+    setState(state) {
+        this.gameState = state;
+    }
+    addPlayer(playerId, playerName) {
+        if (this.gameState.players.length >= GAME_CONSTANTS.MAX_PLAYERS) {
+            return false;
+        }
+        if (this.gameState.phase !== game_repository_1.GamePhase.WAITING) {
+            return false;
+        }
+        if (this.gameState.players.find((p) => p.id === playerId)) {
+            return false;
+        }
+        const player = {
+            id: playerId,
+            name: playerName,
+            scoreCard: createEmptyScoreCard(),
+        };
+        this.gameState = {
+            ...this.gameState,
+            players: [...this.gameState.players, player],
+            updatedAt: Date.now(),
+        };
+        return true;
+    }
+    startGame() {
+        if (this.gameState.players.length < GAME_CONSTANTS.MIN_PLAYERS) {
+            return false;
+        }
+        if (this.gameState.phase !== game_repository_1.GamePhase.WAITING) {
+            return false;
+        }
+        const newDiceSet = rollDice(createDiceSet());
+        this.gameState = {
+            ...this.gameState,
+            diceSet: newDiceSet,
+            phase: game_repository_1.GamePhase.ROLLING,
+            updatedAt: Date.now(),
+        };
+        return true;
+    }
+    roll() {
+        if (this.gameState.phase !== game_repository_1.GamePhase.ROLLING) {
+            return {
+                success: false,
+                message: '주사위를 굴릴 수 없는 상태입니다.',
+                gameState: this.gameState,
+            };
+        }
+        if (this.gameState.diceSet.rollCount >= GAME_CONSTANTS.MAX_ROLLS_PER_TURN) {
+            return {
+                success: false,
+                message: '더 이상 주사위를 굴릴 수 없습니다.',
+                gameState: this.gameState,
+            };
+        }
+        const newDiceSet = rollDice(this.gameState.diceSet);
+        this.gameState = {
+            ...this.gameState,
+            diceSet: newDiceSet,
+            updatedAt: Date.now(),
+        };
+        return {
+            success: true,
+            message: `주사위를 굴렸습니다. (${newDiceSet.rollCount}/3)`,
+            gameState: this.gameState,
+        };
+    }
+    setDiceKeepStatus(keepStatus) {
+        if (this.gameState.phase !== game_repository_1.GamePhase.ROLLING) {
+            return false;
+        }
+        if (keepStatus.length !== GAME_CONSTANTS.DICE_COUNT) {
+            return false;
+        }
+        this.gameState = {
+            ...this.gameState,
+            diceSet: {
+                ...this.gameState.diceSet,
+                kept: [...keepStatus],
+            },
+            updatedAt: Date.now(),
+        };
+        return true;
+    }
+    selectScoreCategory(category) {
+        if (this.gameState.phase !== game_repository_1.GamePhase.ROLLING) {
+            return {
+                success: false,
+                message: '점수를 선택할 수 없는 상태입니다.',
+                gameState: this.gameState,
+            };
+        }
+        const currentPlayer = this.gameState.players[this.gameState.currentPlayerIndex];
+        const existingScore = currentPlayer.scoreCard[category];
+        // Firebase는 null을 저장하지 않으므로 undefined도 체크
+        if (existingScore !== null && existingScore !== undefined) {
+            return {
+                success: false,
+                message: '이미 선택된 카테고리입니다.',
+                gameState: this.gameState,
+            };
+        }
+        const score = calculateScore(category, this.gameState.diceSet.values);
+        const updatedPlayers = this.gameState.players.map((player, index) => {
+            if (index !== this.gameState.currentPlayerIndex) {
+                return player;
+            }
+            return {
+                ...player,
+                scoreCard: {
+                    ...player.scoreCard,
+                    [category]: score,
+                },
+            };
+        });
+        const nextIndex = (this.gameState.currentPlayerIndex + 1) %
+            this.gameState.players.length;
+        const isNewRound = nextIndex === 0;
+        // 모든 13개 카테고리에 점수가 기록되었는지 확인
+        const ALL_CATEGORIES = Object.values(ScoreCategory);
+        // 디버그: 각 플레이어의 기록된 카테고리 수 확인
+        updatedPlayers.forEach((player, idx) => {
+            const filledCategories = ALL_CATEGORIES.filter((cat) => typeof player.scoreCard[cat] === 'number');
+            console.log(`[isComplete] Player ${idx}: ${filledCategories.length}/13 categories filled`);
+            console.log(`[isComplete] ScoreCard keys:`, Object.keys(player.scoreCard));
+        });
+        const isComplete = updatedPlayers.every((player) => ALL_CATEGORIES.every((cat) => {
+            const score = player.scoreCard[cat];
+            return typeof score === 'number';
+        }));
+        console.log(`[isComplete] Result: ${isComplete}`);
+        const newDiceSet = rollDice(createDiceSet());
+        // 게임 완료 시 라운드를 증가시키지 않음
+        const newRound = isComplete
+            ? this.gameState.round
+            : isNewRound
+                ? this.gameState.round + 1
+                : this.gameState.round;
+        this.gameState = {
+            ...this.gameState,
+            players: updatedPlayers,
+            currentPlayerIndex: isComplete ? this.gameState.currentPlayerIndex : nextIndex,
+            round: newRound,
+            diceSet: isComplete ? this.gameState.diceSet : newDiceSet,
+            phase: isComplete ? game_repository_1.GamePhase.FINISHED : game_repository_1.GamePhase.ROLLING,
+            updatedAt: Date.now(),
+        };
+        return {
+            success: true,
+            message: `${category}에 ${score}점을 기록했습니다.`,
+            gameState: this.gameState,
+        };
+    }
+}
+exports.GameEngine = GameEngine;
+//# sourceMappingURL=game-engine.js.map

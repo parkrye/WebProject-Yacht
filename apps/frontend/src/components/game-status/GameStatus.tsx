@@ -34,7 +34,7 @@ export function GameStatus({
         <div className="flex items-center gap-2">
           <span className="text-wood-light">Round:</span>
           <span className="font-bold text-white px-2 py-1 bg-wood-dark/50 rounded">
-            {round} / 12
+            {round} / 13
           </span>
         </div>
         {currentPlayer && (

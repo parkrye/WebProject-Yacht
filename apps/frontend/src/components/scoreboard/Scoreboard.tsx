@@ -48,13 +48,13 @@ function calculatePossibleScore(category: ScoreCategory, dice: number[]): number
         [2, 3, 4, 5],
         [3, 4, 5, 6],
       ];
-      return straights.some((s) => s.every((n) => unique.has(n))) ? 30 : 0;
+      return straights.some((s) => s.every((n) => unique.has(n))) ? 15 : 0;
     }
     case 'largeStraight': {
       const unique = [...new Set(sortedDice)];
       const isLarge =
         (unique.length === 5 && unique[4] - unique[0] === 4);
-      return isLarge ? 40 : 0;
+      return isLarge ? 30 : 0;
     }
     case 'choice':
       return sum;
@@ -107,7 +107,8 @@ function ScoreRow({
   canSelect: boolean;
 }) {
   const currentPlayer = players[currentPlayerIndex];
-  const isAvailable = currentPlayer?.scoreCard[category] === null;
+  const scoreValue = currentPlayer?.scoreCard[category];
+  const isAvailable = scoreValue === null || scoreValue === undefined;
   const isClickable = canSelect && isAvailable;
 
   return (
@@ -124,7 +125,8 @@ function ScoreRow({
       {players.map((player, index) => {
         const score = player.scoreCard[category];
         const isCurrentPlayer = index === currentPlayerIndex;
-        const showPossible = isCurrentPlayer && isAvailable && canSelect;
+        const cellIsAvailable = score === null || score === undefined;
+        const showPossible = isCurrentPlayer && cellIsAvailable && canSelect;
 
         return (
           <td
@@ -135,7 +137,7 @@ function ScoreRow({
               ${isClickable && isCurrentPlayer ? 'text-gold font-bold' : ''}
             `}
           >
-            {score !== null ? (
+            {score !== null && score !== undefined ? (
               <span className="text-white">{score}</span>
             ) : showPossible ? (
               <span className="text-gold/70 animate-pulse">{possibleScore}</span>

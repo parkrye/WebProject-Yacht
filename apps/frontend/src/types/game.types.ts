@@ -30,6 +30,7 @@ export type GamePhase = 'waiting' | 'rolling' | 'scoring' | 'finished';
 
 export interface GameState {
   id: string;
+  hostId: string;
   players: Player[];
   currentPlayerIndex: number;
   diceSet: DiceSet;
