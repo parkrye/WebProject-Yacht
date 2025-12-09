@@ -573,3 +573,58 @@ Mobile (< 768px):
 - 버튼 최소 크기: 44x44px (터치 친화적)
 - 시각적 피드백: hover, focus, active 상태 명확히 구분
 - 상태 표시: 아이콘 + 텍스트 병행
+
+---
+
+## 구현된 기능 상세
+
+### 주사위 시스템
+- **초기값**: 게임 시작 시 주사위는 [6,6,6,6,6]으로 표시
+- **턴 전환 시**: 이전 주사위 값을 유지하여 표시 (rollCount만 리셋)
+- **다른 플레이어 주사위 굴림**: 애니메이션과 SFX가 모든 플레이어에게 동기화
+
+### 채팅 시스템
+- **6개 카테고리**: 칭찬, 도발, 응원, 반응, 인사, 감정
+- **각 카테고리 6개 메시지**
+- **육각형 배치 UI**: HEXAGONAL_POSITIONS 배열로 위치 계산
+
+```typescript
+const HEXAGONAL_POSITIONS = [
+  { x: -32, y: -55 },  // 상좌
+  { x: 32, y: -55 },   // 상우
+  { x: -60, y: 0 },    // 좌
+  { x: 60, y: 0 },     // 우
+  { x: -32, y: 55 },   // 하좌
+  { x: 32, y: 55 },    // 하우
+];
+```
+
+### AI 봇 시스템
+- **난이도 파라미터**: aggression, caution, mistake
+- **상단 보너스 고려**: 63점 달성을 위한 전략적 의사결정
+- **기대값 계산**: 각 상단 카테고리의 기대값(ones: 2.5, twos: 5, ... sixes: 15)
+- **희생 전략**: 낮은 기대값 카테고리에 0점 기록하여 높은 가치 카테고리 보존
+
+```typescript
+// AI 기대값 테이블
+const UPPER_EXPECTED: Record<string, number> = {
+  ones: 2.5, twos: 5, threes: 7.5, fours: 10, fives: 12.5, sixes: 15
+};
+
+// ScoreCard를 고려한 주사위 유지 결정
+export function decideDiceToKeep(
+  diceValues: number[],
+  params: AIParams,
+  scoreCard?: ScoreCard
+): boolean[]
+```
+
+### 오디오 시스템
+- **BGM**: HomePage에서 시작, 전체 앱에서 유지
+- **SFX**: 주사위 굴리기(액션 시작 시점), 버튼 클릭, 야찌 달성
+- **Zustand 스토어**: useAudioStore로 전역 상태 관리
+
+### 점수 계산
+- **단일 소스**: `calculateScore()` 함수 (game-engine.ts)
+- **점수판 미리보기**: Scoreboard에서 calculateScore 함수 직접 사용
+- **점수 기록 애니메이션**: highlightedCell 상태로 하이라이트 효과

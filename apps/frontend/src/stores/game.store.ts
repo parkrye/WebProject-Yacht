@@ -2,7 +2,20 @@ import { create } from 'zustand';
 import type { GameState, ScoreCategory } from '../types/game.types';
 import { firebaseService } from '../services/firebase.service';
 import { GameEngine } from '../services/game-engine';
-import { getRandomBotName, isBot, decideDiceToKeep, chooseBestCategory, delay } from '../services/ai-bot.service';
+import {
+  getRandomBot,
+  isBot,
+  decideDiceToKeep,
+  chooseBestCategory,
+  shouldRollAgain,
+  delay,
+  registerBotParams,
+  getBotParams,
+  calculateThinkingTime,
+  shouldAISendChat,
+  chooseAIChatMessage,
+} from '../services/ai-bot.service';
+import type { AIChatContext } from '../services/ai-bot.service';
 
 const STORAGE_KEY_PLAYER_ID = 'yacht_player_id';
 const STORAGE_KEY_GAME_ID = 'yacht_game_id';
@@ -176,13 +189,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const existingNames = gameState.players.map(p => p.name);
-      const botName = getRandomBotName(existingNames);
+      const bot = getRandomBot(existingNames);
       const botId = `bot_${Date.now()}`;
+
+      // AI 파라미터 등록
+      registerBotParams(botId, bot.params);
+      console.log(`[addBot] ${bot.name} 추가됨:`, bot.params);
 
       const engine = new GameEngine(gameState.id);
       engine.setState(gameState);
 
-      const success = engine.addPlayer(botId, botName);
+      const success = engine.addPlayer(botId, bot.name);
       if (!success) {
         set({ error: 'AI를 추가할 수 없습니다.' });
         return;
@@ -429,26 +446,69 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({ isAiTurnInProgress: true });
 
+    // AI 채팅 헬퍼 함수
+    const sendAIChat = async (context: AIChatContext) => {
+      const params = getBotParams(currentPlayer.id);
+      if (shouldAISendChat(params, context)) {
+        const message = chooseAIChatMessage(params, context);
+        await firebaseService.sendChatMessage(gameState.id, {
+          playerId: currentPlayer.id,
+          playerName: currentPlayer.name,
+          message,
+          timestamp: Date.now(),
+        });
+      }
+    };
+
     try {
       let state = gameState;
       const engine = new GameEngine(state.id);
 
-      // AI는 2~3번 굴림
-      const rollCount = 2 + Math.floor(Math.random() * 2); // 2 or 3
+      // AI 파라미터 가져오기
+      const params = getBotParams(currentPlayer.id);
+      console.log(`[AI Turn] ${currentPlayer.name} 파라미터:`, params);
 
-      for (let i = state.diceSet.rollCount; i < rollCount && i < 3; i++) {
-        await delay(800);
+      // 턴 시작 시 채팅
+      await sendAIChat('turnStart');
 
-        // 유지할 주사위 결정
-        if (i > 0) {
-          const keepStatus = decideDiceToKeep(state.diceSet.values);
-          engine.setState(state);
-          engine.setDiceKeepStatus(keepStatus);
-          state = engine.getState();
-          await firebaseService.saveGame(state);
-          set({ gameState: state });
-          await delay(500);
-        }
+      // 첫 굴림 전 신중함에 따른 대기
+      await delay(calculateThinkingTime(params.caution));
+
+      // 첫 굴림
+      engine.setState(state);
+      const firstRoll = engine.roll();
+      if (!firstRoll.success) {
+        set({ isAiTurnInProgress: false });
+        return;
+      }
+      state = engine.getState();
+      await firebaseService.saveGame(state);
+      set({ gameState: state });
+
+      // 첫 굴림 결과에 따른 채팅
+      const firstRollSum = state.diceSet.values.reduce((a, b) => a + b, 0);
+      const isGoodRoll = firstRollSum >= 20 || state.diceSet.values.every(v => v === state.diceSet.values[0]);
+      if (isGoodRoll) {
+        await sendAIChat('goodRoll');
+      } else if (firstRollSum <= 12) {
+        await sendAIChat('badRoll');
+      }
+
+      // 추가 굴림 여부 결정 (파라미터 기반)
+      while (shouldRollAgain(state.diceSet.values, state.diceSet.rollCount, currentPlayer.scoreCard, params)) {
+        // 신중함에 따른 대기
+        await delay(calculateThinkingTime(params.caution));
+
+        // 유지할 주사위 결정 (파라미터 + 스코어카드 적용)
+        const keepStatus = decideDiceToKeep(state.diceSet.values, params, currentPlayer.scoreCard);
+        engine.setState(state);
+        engine.setDiceKeepStatus(keepStatus);
+        state = engine.getState();
+        await firebaseService.saveGame(state);
+        set({ gameState: state });
+
+        // 킵 결정 후 잠시 대기
+        await delay(calculateThinkingTime(params.caution) * 0.5);
 
         // 주사위 굴리기
         engine.setState(state);
@@ -458,12 +518,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state = engine.getState();
         await firebaseService.saveGame(state);
         set({ gameState: state });
+
+        // 추가 굴림 결과에 따른 채팅 (야찌 등 특별한 경우)
+        if (state.diceSet.values.every(v => v === state.diceSet.values[0])) {
+          await sendAIChat('goodRoll');
+        }
       }
 
-      await delay(1000);
+      // 카테고리 선택 전 신중함에 따른 대기
+      await delay(calculateThinkingTime(params.caution));
 
-      // 최적의 카테고리 선택
-      const bestCategory = chooseBestCategory(state.diceSet.values, currentPlayer.scoreCard);
+      // 최적의 카테고리 선택 (파라미터 적용)
+      const bestCategory = chooseBestCategory(state.diceSet.values, currentPlayer.scoreCard, params);
+      console.log(`[AI] ${currentPlayer.name} 선택: ${bestCategory}`);
 
       engine.setState(state);
       const result = engine.selectScoreCategory(bestCategory);
@@ -473,11 +540,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
         await firebaseService.saveGame(newState);
         set({ gameState: newState });
 
+        // 점수 선택 후 채팅
+        await sendAIChat('scoreSelect');
+
         // Check if next player is also AI
         if (newState.phase === 'rolling') {
           const nextPlayer = newState.players[newState.currentPlayerIndex];
           if (isBot(nextPlayer.id)) {
-            setTimeout(() => get().playAiTurn(), 1500);
+            // 다음 AI 플레이어도 신중함에 따라 대기
+            const nextParams = getBotParams(nextPlayer.id);
+            setTimeout(() => get().playAiTurn(), calculateThinkingTime(nextParams.caution));
           }
         }
       }
@@ -496,13 +568,93 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const isCurrentHost = gameState.hostId === myPlayerId;
+      // 나를 제외한 실제 플레이어(봇 아닌) 수 계산
+      const realPlayersAfterLeave = gameState.players.filter(
+        p => p.id !== myPlayerId && !p.id.startsWith('bot_')
+      ).length;
 
-      if (isCurrentHost) {
-        // 방장이 나가면 게임 삭제 (Firebase에서 제거)
+      if (realPlayersAfterLeave === 0) {
+        // 실제 플레이어가 없으면 방 삭제
+        console.log('[leaveGame] 실제 플레이어가 없어 방 삭제:', gameState.id);
         await firebaseService.deleteGame(gameState.id);
+      } else {
+        // 게임 진행 중인지 확인
+        const isGameInProgress = gameState.phase === 'rolling' || gameState.phase === 'scoring';
+
+        // 나의 현재 정보 찾기
+        const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+        const myPlayerIndex = gameState.players.findIndex(p => p.id === myPlayerId);
+
+        let updatedPlayers = gameState.players;
+        let newHostId = gameState.hostId;
+
+        if (isGameInProgress && myPlayer) {
+          // 게임 진행 중: 나를 AI로 대체
+          const botId = `bot_${Date.now()}`;
+          const botName = `${myPlayer.name} (AI)`;
+
+          // AI 파라미터 등록 (기본값)
+          const defaultBotParams = { aggression: 5, caution: 5, mistake: 2 };
+          registerBotParams(botId, defaultBotParams);
+          console.log(`[leaveGame] ${myPlayer.name} -> AI로 대체:`, botId);
+
+          updatedPlayers = gameState.players.map(p => {
+            if (p.id === myPlayerId) {
+              return {
+                ...p,
+                id: botId,
+                name: botName,
+              };
+            }
+            return p;
+          });
+
+          // 현재 내 차례였다면 AI가 바로 플레이하도록
+          const wasMyTurn = gameState.currentPlayerIndex === myPlayerIndex;
+
+          // 방장이 나가는 경우 다음 실제 플레이어에게 방장 이전
+          if (gameState.hostId === myPlayerId) {
+            const nextRealPlayer = updatedPlayers.find(p => !p.id.startsWith('bot_'));
+            if (nextRealPlayer) {
+              newHostId = nextRealPlayer.id;
+              console.log('[leaveGame] 방장 이전:', newHostId);
+            }
+          }
+
+          const updatedState: GameState = {
+            ...gameState,
+            players: updatedPlayers,
+            hostId: newHostId,
+          };
+
+          await firebaseService.saveGame(updatedState);
+
+          // 내 차례였다면 AI 턴 트리거 (다른 클라이언트에서 처리됨)
+          if (wasMyTurn) {
+            console.log('[leaveGame] 내 차례였음 - AI가 이어서 플레이');
+          }
+        } else {
+          // 대기 중: 플레이어 목록에서 제거
+          updatedPlayers = gameState.players.filter(p => p.id !== myPlayerId);
+
+          // 방장이 나가는 경우 다음 실제 플레이어에게 방장 이전
+          if (gameState.hostId === myPlayerId) {
+            const nextRealPlayer = updatedPlayers.find(p => !p.id.startsWith('bot_'));
+            if (nextRealPlayer) {
+              newHostId = nextRealPlayer.id;
+              console.log('[leaveGame] 방장 이전:', newHostId);
+            }
+          }
+
+          const updatedState: GameState = {
+            ...gameState,
+            players: updatedPlayers,
+            hostId: newHostId,
+          };
+
+          await firebaseService.saveGame(updatedState);
+        }
       }
-      // 일반 플레이어는 그냥 로컬에서 나가기만 함
 
       cleanup();
     } catch (err) {

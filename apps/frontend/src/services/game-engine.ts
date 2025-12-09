@@ -41,9 +41,9 @@ function createEmptyScoreCard(): ScoreCard {
   };
 }
 
-function createDiceSet(): DiceSet {
+function createDiceSet(initialValues?: number[]): DiceSet {
   return {
-    values: Array(GAME_CONSTANTS.DICE_COUNT).fill(0),
+    values: initialValues || Array(GAME_CONSTANTS.DICE_COUNT).fill(6),
     kept: Array(GAME_CONSTANTS.DICE_COUNT).fill(false),
     rollCount: 0,
   };
@@ -249,10 +249,10 @@ export class GameEngine {
       return false;
     }
 
-    const newDiceSet = rollDice(createDiceSet());
+    // 게임 시작 시 주사위를 굴리지 않음 (플레이어가 직접 굴림)
     this.gameState = {
       ...this.gameState,
-      diceSet: newDiceSet,
+      diceSet: createDiceSet(),
       phase: 'rolling' as GamePhase,
       updatedAt: Date.now(),
     };
@@ -357,7 +357,9 @@ export class GameEngine {
       }),
     );
 
-    const newDiceSet = rollDice(createDiceSet());
+    // 다음 턴에 주사위를 자동으로 굴리지 않음 (플레이어가 직접 굴림)
+    // 이전 주사위 값을 유지하여 보여줌 (rollCount만 리셋)
+    const newDiceSet = createDiceSet(this.gameState.diceSet.values);
 
     const newRound = isComplete
       ? this.gameState.round

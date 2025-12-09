@@ -1,6 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getDatabase, Database, ref, set, get, remove, onValue, off } from 'firebase/database';
+import { getDatabase, Database, ref, set, get, remove, onValue, off, push } from 'firebase/database';
 import type { GameState } from '../types/game.types';
+import type { ChatMessage } from '../components/chat';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -121,5 +122,129 @@ export const firebaseService = {
     const db = getDb();
     const gameRef = ref(db, `games/${gameId}`);
     await remove(gameRef);
+  },
+
+  // 대기 중인 방 목록 가져오기
+  async getWaitingRooms(): Promise<GameState[]> {
+    const db = getDb();
+    const gamesRef = ref(db, 'games');
+    const snapshot = await get(gamesRef);
+
+    if (!snapshot.exists()) {
+      return [];
+    }
+
+    const data = snapshot.val();
+    const rooms: GameState[] = [];
+
+    for (const gameId in data) {
+      const gameData = data[gameId];
+      // waiting 상태이고 플레이어가 4명 미만인 방만 표시
+      if (gameData.phase === 'waiting' && (gameData.players?.length || 0) < 4) {
+        const players = (gameData.players || []).map((player: GameState['players'][0]) => ({
+          ...player,
+          scoreCard: player.scoreCard || createEmptyScoreCard(),
+        }));
+
+        rooms.push({
+          ...gameData,
+          players,
+          diceSet: {
+            values: gameData.diceSet?.values || [0, 0, 0, 0, 0],
+            kept: gameData.diceSet?.kept || [false, false, false, false, false],
+            rollCount: gameData.diceSet?.rollCount ?? 0,
+          },
+        } as GameState);
+      }
+    }
+
+    // 최신순 정렬
+    rooms.sort((a, b) => b.createdAt - a.createdAt);
+    return rooms;
+  },
+
+  // 방 목록 실시간 구독
+  subscribeToRooms(callback: (rooms: GameState[]) => void): () => void {
+    const db = getDb();
+    const gamesRef = ref(db, 'games');
+
+    onValue(gamesRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        callback([]);
+        return;
+      }
+
+      const data = snapshot.val();
+      const rooms: GameState[] = [];
+
+      for (const gameId in data) {
+        const gameData = data[gameId];
+        // waiting 상태이고 플레이어가 4명 미만인 방만 표시
+        if (gameData.phase === 'waiting' && (gameData.players?.length || 0) < 4) {
+          const players = (gameData.players || []).map((player: GameState['players'][0]) => ({
+            ...player,
+            scoreCard: player.scoreCard || createEmptyScoreCard(),
+          }));
+
+          rooms.push({
+            ...gameData,
+            players,
+            diceSet: {
+              values: gameData.diceSet?.values || [0, 0, 0, 0, 0],
+              kept: gameData.diceSet?.kept || [false, false, false, false, false],
+              rollCount: gameData.diceSet?.rollCount ?? 0,
+            },
+          } as GameState);
+        }
+      }
+
+      // 최신순 정렬
+      rooms.sort((a, b) => b.createdAt - a.createdAt);
+      callback(rooms);
+    });
+
+    return () => off(gamesRef);
+  },
+
+  // 채팅 메시지 전송
+  async sendChatMessage(gameId: string, message: Omit<ChatMessage, 'id'>): Promise<void> {
+    const db = getDb();
+    const chatRef = ref(db, `chats/${gameId}`);
+    const newMessageRef = push(chatRef);
+    await set(newMessageRef, {
+      ...message,
+      id: newMessageRef.key,
+    });
+  },
+
+  // 채팅 메시지 구독
+  subscribeToChatMessages(
+    gameId: string,
+    callback: (messages: ChatMessage[]) => void,
+  ): () => void {
+    const db = getDb();
+    const chatRef = ref(db, `chats/${gameId}`);
+
+    onValue(chatRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        callback([]);
+        return;
+      }
+
+      const data = snapshot.val();
+      const messages: ChatMessage[] = Object.values(data);
+      // 시간순 정렬
+      messages.sort((a, b) => a.timestamp - b.timestamp);
+      callback(messages);
+    });
+
+    return () => off(chatRef);
+  },
+
+  // 채팅 삭제 (게임 종료 시)
+  async deleteChatMessages(gameId: string): Promise<void> {
+    const db = getDb();
+    const chatRef = ref(db, `chats/${gameId}`);
+    await remove(chatRef);
   },
 };

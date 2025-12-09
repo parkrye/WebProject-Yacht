@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import type { Player, ScoreCategory, ScoreCard } from '../../types/game.types';
 import { SCORE_CATEGORIES } from '../../types/game.types';
+import { calculateScore } from '../../services/game-engine';
 
 interface ScoreboardProps {
   players: Player[];
@@ -7,64 +9,6 @@ interface ScoreboardProps {
   diceValues: number[];
   onSelectCategory: (category: ScoreCategory) => void;
   canSelectScore: boolean;
-}
-
-// 점수 계산 함수들
-function calculatePossibleScore(category: ScoreCategory, dice: number[]): number {
-  const counts = new Map<number, number>();
-  dice.forEach((d) => counts.set(d, (counts.get(d) || 0) + 1));
-  const sum = dice.reduce((a, b) => a + b, 0);
-  const sortedDice = [...dice].sort((a, b) => a - b);
-
-  switch (category) {
-    case 'ones':
-      return dice.filter((d) => d === 1).length * 1;
-    case 'twos':
-      return dice.filter((d) => d === 2).length * 2;
-    case 'threes':
-      return dice.filter((d) => d === 3).length * 3;
-    case 'fours':
-      return dice.filter((d) => d === 4).length * 4;
-    case 'fives':
-      return dice.filter((d) => d === 5).length * 5;
-    case 'sixes':
-      return dice.filter((d) => d === 6).length * 6;
-    case 'threeOfAKind': {
-      const hasThree = [...counts.values()].some((c) => c >= 3);
-      return hasThree ? sum : 0;
-    }
-    case 'fourOfAKind': {
-      const hasFour = [...counts.values()].some((c) => c >= 4);
-      return hasFour ? sum : 0;
-    }
-    case 'fullHouse': {
-      const values = [...counts.values()].sort((a, b) => b - a);
-      return values[0] === 3 && values[1] === 2 ? 25 : 0;
-    }
-    case 'smallStraight': {
-      const unique = new Set(sortedDice);
-      const straights = [
-        [1, 2, 3, 4],
-        [2, 3, 4, 5],
-        [3, 4, 5, 6],
-      ];
-      return straights.some((s) => s.every((n) => unique.has(n))) ? 15 : 0;
-    }
-    case 'largeStraight': {
-      const unique = [...new Set(sortedDice)];
-      const isLarge =
-        (unique.length === 5 && unique[4] - unique[0] === 4);
-      return isLarge ? 30 : 0;
-    }
-    case 'choice':
-      return sum;
-    case 'yacht': {
-      const allSame = [...counts.values()].some((c) => c === 5);
-      return allSame ? 50 : 0;
-    }
-    default:
-      return 0;
-  }
 }
 
 const UPPER_CATEGORIES: ScoreCategory[] = [
@@ -98,6 +42,7 @@ function ScoreRow({
   possibleScore,
   onSelect,
   canSelect,
+  highlightedCell,
 }: {
   category: ScoreCategory;
   players: Player[];
@@ -105,6 +50,7 @@ function ScoreRow({
   possibleScore: number;
   onSelect: () => void;
   canSelect: boolean;
+  highlightedCell: { category: ScoreCategory; playerIndex: number } | null;
 }) {
   const currentPlayer = players[currentPlayerIndex];
   const scoreValue = currentPlayer?.scoreCard[category];
@@ -115,11 +61,11 @@ function ScoreRow({
     <tr
       className={`
         border-b border-wood-dark/30 transition-colors
-        ${isClickable ? 'hover:bg-gold/10 cursor-pointer' : ''}
+        ${isClickable ? 'hover:bg-gold/10 active:bg-gold/20 cursor-pointer' : ''}
       `}
       onClick={isClickable ? onSelect : undefined}
     >
-      <td className="py-2 px-3 text-left font-medium">
+      <td className="py-1.5 sm:py-2 px-2 sm:px-3 text-left font-medium text-xs sm:text-sm">
         {getCategoryLabel(category)}
       </td>
       {players.map((player, index) => {
@@ -127,18 +73,22 @@ function ScoreRow({
         const isCurrentPlayer = index === currentPlayerIndex;
         const cellIsAvailable = score === null || score === undefined;
         const showPossible = isCurrentPlayer && cellIsAvailable && canSelect;
+        const isHighlighted = highlightedCell?.category === category && highlightedCell?.playerIndex === index;
 
         return (
           <td
             key={player.id}
             className={`
-              py-2 px-3 text-center
+              py-1.5 sm:py-2 px-1 sm:px-3 text-center text-xs sm:text-sm transition-all duration-300
               ${isCurrentPlayer ? 'bg-gold/5' : ''}
               ${isClickable && isCurrentPlayer ? 'text-gold font-bold' : ''}
+              ${isHighlighted ? 'animate-score-flash bg-gold/30' : ''}
             `}
           >
             {score !== null && score !== undefined ? (
-              <span className="text-white">{score}</span>
+              <span className={`${isHighlighted ? 'text-gold font-bold text-base sm:text-lg' : 'text-white'}`}>
+                {score}
+              </span>
             ) : showPossible ? (
               <span className="text-gold/70 animate-pulse">{possibleScore}</span>
             ) : (
@@ -177,26 +127,68 @@ export function Scoreboard({
   onSelectCategory,
   canSelectScore,
 }: ScoreboardProps) {
+  const [highlightedCell, setHighlightedCell] = useState<{ category: ScoreCategory; playerIndex: number } | null>(null);
+  const [prevScores, setPrevScores] = useState<Map<string, number | null>>(new Map());
+
+  // 점수 변경 감지
+  useEffect(() => {
+    const allCategories: ScoreCategory[] = [
+      'ones', 'twos', 'threes', 'fours', 'fives', 'sixes',
+      'threeOfAKind', 'fourOfAKind', 'fullHouse',
+      'smallStraight', 'largeStraight', 'choice', 'yacht'
+    ];
+
+    // 현재 점수 맵 생성
+    const currentScores = new Map<string, number | null>();
+    players.forEach((player, playerIndex) => {
+      allCategories.forEach(category => {
+        const key = `${playerIndex}-${category}`;
+        currentScores.set(key, player.scoreCard[category]);
+      });
+    });
+
+    // 이전 점수와 비교하여 새로 채워진 칸 찾기
+    if (prevScores.size > 0) {
+      for (const [key, currentScore] of currentScores) {
+        const prevScore = prevScores.get(key);
+        // null에서 숫자로 변경된 경우 (새로 점수가 기록된 경우)
+        if ((prevScore === null || prevScore === undefined) && currentScore !== null && currentScore !== undefined) {
+          const [playerIndexStr, category] = key.split('-');
+          const playerIndex = parseInt(playerIndexStr);
+          setHighlightedCell({ category: category as ScoreCategory, playerIndex });
+
+          // 1.5초 후 하이라이트 제거
+          setTimeout(() => {
+            setHighlightedCell(null);
+          }, 1500);
+          break;
+        }
+      }
+    }
+
+    setPrevScores(currentScores);
+  }, [players]);
+
   return (
-    <div className="wood-frame p-4">
-      <h3 className="text-gold text-lg font-bold mb-3 text-center">
-        Score Card
+    <div className="wood-frame p-2 sm:p-4">
+      <h3 className="text-gold text-base sm:text-lg font-bold mb-2 sm:mb-3 text-center">
+        점수표
       </h3>
-      <div className="felt-table overflow-hidden rounded-lg">
-        <table className="w-full text-sm">
+      <div className="felt-table overflow-hidden rounded-lg overflow-x-auto">
+        <table className="w-full text-xs sm:text-sm min-w-[280px]">
           <thead>
             <tr className="bg-wood-dark/50 text-gold">
-              <th className="py-2 px-3 text-left">Category</th>
+              <th className="py-1.5 sm:py-2 px-2 sm:px-3 text-left text-xs sm:text-sm">카테고리</th>
               {players.map((player, index) => (
                 <th
                   key={player.id}
-                  className={`py-2 px-3 text-center ${
+                  className={`py-1.5 sm:py-2 px-1 sm:px-3 text-center text-xs sm:text-sm truncate max-w-[60px] sm:max-w-none ${
                     index === currentPlayerIndex ? 'text-gold-light' : ''
                   }`}
                 >
-                  {player.name}
+                  <span className="truncate">{player.name.slice(0, 4)}{player.name.length > 4 ? '..' : ''}</span>
                   {index === currentPlayerIndex && (
-                    <span className="ml-1 text-xs">★</span>
+                    <span className="ml-0.5 sm:ml-1 text-[10px] sm:text-xs">★</span>
                   )}
                 </th>
               ))}
@@ -207,9 +199,9 @@ export function Scoreboard({
             <tr className="bg-wood/30">
               <td
                 colSpan={players.length + 1}
-                className="py-1 px-3 text-xs font-bold text-gold uppercase tracking-wider"
+                className="py-1 px-2 sm:px-3 text-[10px] sm:text-xs font-bold text-gold uppercase tracking-wider"
               >
-                Upper Section
+                상단
               </td>
             </tr>
             {UPPER_CATEGORIES.map((category) => (
@@ -218,23 +210,24 @@ export function Scoreboard({
                 category={category}
                 players={players}
                 currentPlayerIndex={currentPlayerIndex}
-                possibleScore={calculatePossibleScore(category, diceValues)}
+                possibleScore={calculateScore(category, diceValues)}
                 onSelect={() => onSelectCategory(category)}
                 canSelect={canSelectScore}
+                highlightedCell={highlightedCell}
               />
             ))}
             {/* Upper Bonus */}
             <tr className="bg-wood/20 border-b border-wood-dark/50">
-              <td className="py-2 px-3 text-left text-xs text-gold/70">
-                Bonus (63+ = 35pts)
+              <td className="py-1.5 sm:py-2 px-2 sm:px-3 text-left text-[10px] sm:text-xs text-gold/70">
+                보너스 (63+)
               </td>
               {players.map((player) => {
                 const { upper, bonus } = calculateUpperBonus(player.scoreCard);
                 return (
-                  <td key={player.id} className="py-2 px-3 text-center text-xs">
-                    <span className="text-wood-light/70">{upper}/63</span>
+                  <td key={player.id} className="py-1.5 sm:py-2 px-1 sm:px-3 text-center text-[10px] sm:text-xs">
+                    <span className="text-wood-light/70">{upper}</span>
                     {bonus > 0 && (
-                      <span className="ml-1 text-gold">+{bonus}</span>
+                      <span className="ml-0.5 sm:ml-1 text-gold">+{bonus}</span>
                     )}
                   </td>
                 );
@@ -245,9 +238,9 @@ export function Scoreboard({
             <tr className="bg-wood/30">
               <td
                 colSpan={players.length + 1}
-                className="py-1 px-3 text-xs font-bold text-gold uppercase tracking-wider"
+                className="py-1 px-2 sm:px-3 text-[10px] sm:text-xs font-bold text-gold uppercase tracking-wider"
               >
-                Lower Section
+                하단
               </td>
             </tr>
             {LOWER_CATEGORIES.map((category) => (
@@ -256,22 +249,23 @@ export function Scoreboard({
                 category={category}
                 players={players}
                 currentPlayerIndex={currentPlayerIndex}
-                possibleScore={calculatePossibleScore(category, diceValues)}
+                possibleScore={calculateScore(category, diceValues)}
                 onSelect={() => onSelectCategory(category)}
                 canSelect={canSelectScore}
+                highlightedCell={highlightedCell}
               />
             ))}
 
             {/* Total */}
             <tr className="bg-wood-dark/70 font-bold">
-              <td className="py-3 px-3 text-left text-gold">TOTAL</td>
+              <td className="py-2 sm:py-3 px-2 sm:px-3 text-left text-gold text-xs sm:text-base">합계</td>
               {players.map((player) => {
                 const { bonus } = calculateUpperBonus(player.scoreCard);
                 const total = calculateTotal(player.scoreCard) + bonus;
                 return (
                   <td
                     key={player.id}
-                    className="py-3 px-3 text-center text-gold text-lg"
+                    className="py-2 sm:py-3 px-1 sm:px-3 text-center text-gold text-sm sm:text-lg"
                   >
                     {total}
                   </td>
