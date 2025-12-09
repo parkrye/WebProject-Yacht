@@ -1,0 +1,239 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base Styles */
+body {
+  @apply bg-gray-100 text-gray-900 font-sans;
+}
+
+/* Button Styles */
+.btn-primary {
+  @apply bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold
+         hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed
+         transition-colors duration-200;
+}
+
+.btn-secondary {
+  @apply bg-gray-600 text-white px-4 py-2 rounded-lg font-medium
+         hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed
+         transition-colors duration-200;
+}
+
+/* Input Styles */
+.input-field {
+  @apply border border-gray-300 rounded-lg px-4 py-2 w-full
+         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+}
+
+/* Game Page */
+.game-page {
+  @apply max-w-4xl mx-auto p-6;
+}
+
+.game-lobby {
+  @apply flex flex-col items-center justify-center min-h-screen;
+}
+
+.game-title {
+  @apply text-4xl font-bold text-center mb-8 text-blue-800;
+}
+
+.game-header {
+  @apply mb-6 text-center;
+}
+
+.game-id {
+  @apply text-sm text-gray-500 font-mono;
+}
+
+/* Lobby */
+.lobby-actions {
+  @apply flex flex-col items-center gap-4 w-full max-w-md;
+}
+
+.divider {
+  @apply text-gray-500 my-4;
+}
+
+.join-form {
+  @apply flex flex-col gap-3 w-full;
+}
+
+.join-inline-form {
+  @apply flex gap-2 mt-4;
+}
+
+/* Error Message */
+.error-message {
+  @apply bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4;
+}
+
+/* Game Status */
+.game-status {
+  @apply bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap gap-4 justify-center;
+}
+
+.status-item {
+  @apply flex items-center gap-2;
+}
+
+.status-label {
+  @apply text-gray-600 font-medium;
+}
+
+.status-value {
+  @apply text-gray-900 font-bold;
+}
+
+.status-player {
+  @apply text-blue-600;
+}
+
+/* Dice View */
+.dice-view {
+  @apply bg-white rounded-lg shadow p-6 mb-6;
+}
+
+.dice-title {
+  @apply text-xl font-bold text-center mb-4;
+}
+
+.dice-row {
+  @apply flex justify-center gap-4;
+}
+
+.dice-container {
+  @apply w-16 h-16 bg-white border-2 rounded-lg p-1 relative cursor-pointer
+         transition-all duration-200;
+}
+
+.dice-normal {
+  @apply border-gray-300 hover:border-blue-400;
+}
+
+.dice-kept {
+  @apply border-green-500 bg-green-50;
+}
+
+.dice-disabled {
+  @apply cursor-not-allowed opacity-60;
+}
+
+.dice-grid {
+  @apply grid grid-cols-3 grid-rows-3 gap-0.5 w-full h-full;
+}
+
+.dice-cell {
+  @apply w-full h-full;
+}
+
+.dice-dot {
+  @apply bg-gray-800 rounded-full;
+}
+
+.dice-kept-label {
+  @apply absolute -bottom-6 left-1/2 transform -translate-x-1/2
+         text-xs text-green-600 font-bold;
+}
+
+/* Turn Actions */
+.turn-actions {
+  @apply bg-white rounded-lg shadow p-6 mb-6 text-center;
+}
+
+.turn-message {
+  @apply text-gray-700 mb-4;
+}
+
+.turn-finished {
+  @apply text-2xl font-bold text-green-600;
+}
+
+/* Player Join Section */
+.player-join-section {
+  @apply bg-white rounded-lg shadow p-6 mb-6;
+}
+
+.player-list {
+  @apply list-disc list-inside mb-4;
+}
+
+/* Scoreboard */
+.scoreboard {
+  @apply bg-white rounded-lg shadow p-6 overflow-x-auto;
+}
+
+.scoreboard-title {
+  @apply text-xl font-bold text-center mb-4;
+}
+
+.scoreboard-table {
+  @apply w-full border-collapse;
+}
+
+.scoreboard-table th,
+.scoreboard-table td {
+  @apply border border-gray-200 px-3 py-2 text-center;
+}
+
+.scoreboard-table th {
+  @apply bg-gray-100 font-semibold;
+}
+
+.player-current {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.score-category {
+  @apply text-left font-medium;
+}
+
+.score-cell {
+  @apply transition-colors duration-200;
+}
+
+.score-cell-current {
+  @apply bg-blue-50;
+}
+
+.score-cell-selectable {
+  @apply cursor-pointer hover:bg-blue-200;
+}
+
+.score-possible {
+  @apply text-blue-500 font-semibold;
+}
+
+.score-row-clickable {
+  @apply hover:bg-gray-50;
+}
+
+.section-header td {
+  @apply bg-gray-200 font-bold text-left;
+}
+
+.total-row {
+  @apply font-bold;
+}
+
+.total-row td {
+  @apply bg-gray-100;
+}
+
+.total-cell {
+  @apply text-lg;
+}
+
+/* Game Result */
+.game-result {
+  @apply bg-green-50 border-2 border-green-500 rounded-lg p-6 mt-6 text-center;
+}
+
+.winner-announcement {
+  @apply text-2xl;
+}
+
+.winner-announcement strong {
+  @apply text-green-700;
+}

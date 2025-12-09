@@ -1,99 +1,149 @@
-// 백엔드 서비스 (Turn/Game 진행)
-
-/**
- * GameService
- * - GameController와 GameRepository, game-engine을 연결하는 핵심 서비스 레이어
- * - 비즈니스 로직(턴 흐름 / 플레이 진행 / 점수 기록 / 게임 종료 관리)을 담당한다.
- * - 게임 규칙 자체는 game-engine(ScoreCalculatorService, TurnService, etc.)가 처리하도록 위임한다.
- */
-
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { GameRepository } from './game.repository';
-import { CreateGameRequestDto, RollDiceRequestDto, SelectCategoryRequestDto } from './dto';
-
-import { GameState } from '@libs/game-engine/entities/game-state';
-import { Player } from '@libs/game-engine/entities/player';
-import { DiceService } from '@libs/game-engine/services/dice.service';
-import { TurnService } from '@libs/game-engine/services/turn.service';
-import { ScoreCalculatorService } from '@libs/game-engine/services/score-calculator.service';
-import { GameFlowService } from '@libs/game-engine/services/game-flow.service';
-
-import { v4 as uuid } from 'uuid';
+import { Injectable } from '@nestjs/common';
+import { GameRepository, GameState } from './game.repository';
+import { GameEngine, ScoreCategory } from './game-engine';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class GameService {
-  constructor(
-    private readonly repository: GameRepository,
-    private readonly diceService: DiceService,
-    private readonly turnService: TurnService,
-    private readonly scoreCalculator: ScoreCalculatorService,
-    private readonly gameFlowService: GameFlowService,
-  ) {}
+  private gameEngines: Map<string, GameEngine> = new Map();
 
-  /**
-   * 게임 생성
-   * playerNames를 기반으로 새로운 GameState를 생성 후 저장
-   */
-  createGame(dto: CreateGameRequestDto): { gameId: string } {
-    const gameId = uuid();
-    const players: Player[] = dto.playerNames.map((name) => ({ id: uuid(), name }));
+  constructor(private readonly gameRepository: GameRepository) {}
 
-    const initialState: GameState = this.gameFlowService.createInitialGameState(gameId, players);
-    this.repository.save(gameId, initialState);
-
-    return { gameId };
+  private getOrCreateEngine(gameId: string): GameEngine {
+    let engine = this.gameEngines.get(gameId);
+    if (!engine) {
+      engine = new GameEngine(gameId);
+      this.gameEngines.set(gameId, engine);
+    }
+    return engine;
   }
 
-  /**
-   * 현재 게임 상태 조회
-   */
-  getGameState(gameId: string): GameState {
-    const state = this.repository.findById(gameId);
-    if (!state) throw new NotFoundException(`Game not found: ${gameId}`);
+  async createGame(): Promise<GameState> {
+    const gameId = uuidv4();
+    const engine = this.getOrCreateEngine(gameId);
+    const state = engine.getState();
+
+    await this.gameRepository.save(state);
     return state;
   }
 
-  /**
-   * 주사위 굴림
-   */
-  rollDice(gameId: string, dto: RollDiceRequestDto): GameState {
-    const state = this.getGameState(gameId);
+  async getGame(gameId: string): Promise<GameState | null> {
+    const state = await this.gameRepository.findById(gameId);
 
-    this.turnService.validateActiveTurn(state, dto.playerId);
-    const updatedState = this.diceService.roll(state, dto.keepIndexes);
+    if (state) {
+      const engine = this.getOrCreateEngine(gameId);
+      engine.setState(state);
+    }
 
-    this.repository.update(gameId, updatedState);
-    return updatedState;
+    return state;
   }
 
-  /**
-   * 점수 카테고리 선택
-   * - 점수를 계산하고 state 업데이트
-   * - 턴 종료 및 라운드/게임 종료 처리
-   */
-  selectCategory(gameId: string, dto: SelectCategoryRequestDto): GameState {
-    const state = this.getGameState(gameId);
+  async joinGame(
+    gameId: string,
+    playerId: string,
+    playerName: string,
+  ): Promise<GameState | null> {
+    const state = await this.getGame(gameId);
+    if (!state) {
+      return null;
+    }
 
-    this.turnService.validateActiveTurn(state, dto.playerId);
+    const engine = this.getOrCreateEngine(gameId);
+    engine.setState(state);
 
-    // 점수 계산
-    const stateWithScore = this.scoreCalculator.assignCategoryScore(state, dto.category);
+    const success = engine.addPlayer(playerId, playerName);
+    if (!success) {
+      return null;
+    }
 
-    // 턴/라운드 진행
-    const progressedState = this.turnService.endTurn(stateWithScore);
-
-    // 게임 종료 여부 판정
-    const finalState = this.gameFlowService.evaluateGameCompletion(progressedState);
-
-    this.repository.update(gameId, finalState);
-    return finalState;
+    const newState = engine.getState();
+    await this.gameRepository.save(newState);
+    return newState;
   }
 
-  /**
-   * 게임 종료 여부 확인
-   */
-  isGameFinished(gameId: string): { isFinished: boolean } {
-    const state = this.getGameState(gameId);
-    return { isFinished: state.isFinished };
+  async startGame(gameId: string): Promise<GameState | null> {
+    const state = await this.getGame(gameId);
+    if (!state) {
+      return null;
+    }
+
+    const engine = this.getOrCreateEngine(gameId);
+    engine.setState(state);
+
+    const success = engine.startGame();
+    if (!success) {
+      return null;
+    }
+
+    const newState = engine.getState();
+    await this.gameRepository.save(newState);
+    return newState;
+  }
+
+  async rollDice(gameId: string): Promise<GameState | null> {
+    const state = await this.getGame(gameId);
+    if (!state) {
+      return null;
+    }
+
+    const engine = this.getOrCreateEngine(gameId);
+    engine.setState(state);
+
+    const result = engine.roll();
+    if (!result.success) {
+      return null;
+    }
+
+    const newState = engine.getState();
+    await this.gameRepository.save(newState);
+    return newState;
+  }
+
+  async setKeepStatus(
+    gameId: string,
+    keepStatus: boolean[],
+  ): Promise<GameState | null> {
+    const state = await this.getGame(gameId);
+    if (!state) {
+      return null;
+    }
+
+    const engine = this.getOrCreateEngine(gameId);
+    engine.setState(state);
+
+    const success = engine.setDiceKeepStatus(keepStatus);
+    if (!success) {
+      return null;
+    }
+
+    const newState = engine.getState();
+    await this.gameRepository.save(newState);
+    return newState;
+  }
+
+  async selectScore(
+    gameId: string,
+    category: ScoreCategory,
+  ): Promise<GameState | null> {
+    const state = await this.getGame(gameId);
+    if (!state) {
+      return null;
+    }
+
+    const engine = this.getOrCreateEngine(gameId);
+    engine.setState(state);
+
+    const result = engine.selectScoreCategory(category);
+    if (!result.success) {
+      return null;
+    }
+
+    const newState = engine.getState();
+    await this.gameRepository.save(newState);
+    return newState;
+  }
+
+  cleanupEngine(gameId: string): void {
+    this.gameEngines.delete(gameId);
   }
 }

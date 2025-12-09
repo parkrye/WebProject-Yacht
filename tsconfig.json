@@ -1,14 +1,29 @@
 {
   "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react-jsx",
     "baseUrl": "./",
     "paths": {
       "@libs/*": ["libs/*"],
-      "@/*": ["src/*"],
-      "@configs/*": ["src/configs/*"],
-      "@constants/*": ["src/constants/*"]
+      "@/*": ["src/*"]
     },
     "moduleResolution": "node",
     "esModuleInterop": true,
-    // ... 기타 설정
-  }
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["libs/**/*", "apps/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

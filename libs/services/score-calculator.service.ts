@@ -1,153 +1,147 @@
-// 카테고리별 점수 계산
+import { ScoreCategory } from '../types';
+import { SCORE_CONSTANTS } from '../constants';
+import { getDiceCounts, getSortedValues } from './dice.service';
 
-/**
- * ScoreCalculatorService
- * - Category별 점수를 계산하여 Scorecard에 기록하는 역할만 수행 (SRP).
- * - 게임 규칙(GAME_RULES.md)을 기반으로 계산하고,
- *   점수판/턴/게임 흐름 로직은 포함하지 않는다.
- */
-
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { GameState } from '../entities/game-state';
-import { Category } from '../types/category.enum';
-import { Scorecard } from '../entities/scoreCard';
-import { DiceSet } from '../entities/dice-set';
-
-@Injectable()
-export class ScoreCalculatorService {
-  /**
-   * 카테고리 점수를 계산하여 Scorecard에 반영한 새로운 GameState를 반환한다.
-   */
-  assignCategoryScore(state: GameState, category: Category): GameState {
-    this.ensureCategoryNotFilled(state.scorecard, category);
-
-    const diceValues = state.dice.values;
-    const score = this.calculate(category, diceValues);
-
-    const updatedScorecard: Scorecard = {
-      ...state.scorecard,
-      [category]: {
-        score,
-        filled: true,
-      },
-    };
-
-    return {
-      ...state,
-      scorecard: updatedScorecard,
-      updatedAt: Date.now(),
-    };
+export function calculateScore(
+  category: ScoreCategory,
+  diceValues: number[],
+): number {
+  switch (category) {
+    case ScoreCategory.ONES:
+      return calculateUpperSection(diceValues, 1);
+    case ScoreCategory.TWOS:
+      return calculateUpperSection(diceValues, 2);
+    case ScoreCategory.THREES:
+      return calculateUpperSection(diceValues, 3);
+    case ScoreCategory.FOURS:
+      return calculateUpperSection(diceValues, 4);
+    case ScoreCategory.FIVES:
+      return calculateUpperSection(diceValues, 5);
+    case ScoreCategory.SIXES:
+      return calculateUpperSection(diceValues, 6);
+    case ScoreCategory.THREE_OF_A_KIND:
+      return calculateThreeOfAKind(diceValues);
+    case ScoreCategory.FOUR_OF_A_KIND:
+      return calculateFourOfAKind(diceValues);
+    case ScoreCategory.FULL_HOUSE:
+      return calculateFullHouse(diceValues);
+    case ScoreCategory.SMALL_STRAIGHT:
+      return calculateSmallStraight(diceValues);
+    case ScoreCategory.LARGE_STRAIGHT:
+      return calculateLargeStraight(diceValues);
+    case ScoreCategory.CHOICE:
+      return calculateChoice(diceValues);
+    case ScoreCategory.YACHT:
+      return calculateYacht(diceValues);
+    default:
+      return 0;
   }
+}
 
-  /**
-   * 이미 선택된 카테고리인지 확인
-   */
-  private ensureCategoryNotFilled(scorecard: Scorecard, category: Category): void {
-    if (scorecard[category].filled) {
-      throw new BadRequestException(`Category already filled: ${category}`);
+function calculateUpperSection(diceValues: number[], target: number): number {
+  return diceValues.filter((v) => v === target).reduce((sum, v) => sum + v, 0);
+}
+
+function calculateThreeOfAKind(diceValues: number[]): number {
+  const counts = getDiceCounts(diceValues);
+
+  for (const [value, count] of counts.entries()) {
+    if (count >= 3) {
+      return value * 3;
     }
   }
 
-  /**
-   * 카테고리별 점수 계산
-   * (GAME_RULES.md 로직을 그대로 반영)
-   */
-  private calculate(category: Category, values: number[]): number {
-    const counts = this.countDice(values);
-    const total = values.reduce((acc, v) => acc + v, 0);
+  return 0;
+}
 
-    switch (category) {
-      // ---- Upper Section ----
-      case Category.Ones:   return this.sumByFace(values, 1);
-      case Category.Twos:   return this.sumByFace(values, 2);
-      case Category.Threes: return this.sumByFace(values, 3);
-      case Category.Fours:  return this.sumByFace(values, 4);
-      case Category.Fives:  return this.sumByFace(values, 5);
-      case Category.Sixes:  return this.sumByFace(values, 6);
+function calculateFourOfAKind(diceValues: number[]): number {
+  const counts = getDiceCounts(diceValues);
 
-      // ---- Special Section ----
-      case Category.ThreeOfKind:
-        return this.hasCountAtLeast(counts, 3)
-          ? this.sumMaxGroup(values, counts, 3)
-          : 0;
-
-      case Category.FourOfKind:
-        return this.hasCountAtLeast(counts, 4)
-          ? this.sumMaxGroup(values, counts, 4)
-          : 0;
-
-      case Category.FullHouse:
-        return this.isFullHouse(counts) ? total : 0;
-
-      case Category.SmallStraight:
-        return this.hasSmallStraight(values) ? this.scoreSmallStraight(values) : 0;
-
-      case Category.LargeStraight:
-        return this.hasLargeStraight(values) ? total : 0;
-
-      case Category.Choice:
-        return total;
-
-      case Category.Yacht:
-        return this.isYacht(counts) ? 50 : 0;
-
-      default:
-        throw new BadRequestException(`Unknown category: ${category}`);
+  for (const [value, count] of counts.entries()) {
+    if (count >= 4) {
+      return value * 4;
     }
   }
 
-  // ------------------------ 계산 유틸 ------------------------
+  return 0;
+}
 
-  private countDice(values: number[]): number[] {
-    const result = Array(7).fill(0); // index 1 ~ 6 사용
-    values.forEach((v) => (result[v] += 1));
-    return result;
+function calculateFullHouse(diceValues: number[]): number {
+  const counts = getDiceCounts(diceValues);
+  const countValues = Array.from(counts.values());
+
+  const hasThree = countValues.includes(3);
+  const hasTwo = countValues.includes(2);
+  const hasFive = countValues.includes(5);
+
+  if ((hasThree && hasTwo) || hasFive) {
+    return diceValues.reduce((sum, v) => sum + v, 0);
   }
 
-  private sumByFace(values: number[], face: number): number {
-    return values.filter((v) => v === face).reduce((acc, v) => acc + v, 0);
+  return 0;
+}
+
+function calculateSmallStraight(diceValues: number[]): number {
+  const sorted = getSortedValues(diceValues);
+  const unique = [...new Set(sorted)];
+
+  const smallStraights = [
+    [1, 2, 3, 4],
+    [2, 3, 4, 5],
+    [3, 4, 5, 6],
+  ];
+
+  for (const straight of smallStraights) {
+    if (straight.every((v) => unique.includes(v))) {
+      return straight.reduce((sum, v) => sum + v, 0);
+    }
   }
 
-  private hasCountAtLeast(counts: number[], target: number): boolean {
-    return counts.some((c) => c >= target);
+  return 0;
+}
+
+function calculateLargeStraight(diceValues: number[]): number {
+  const sorted = getSortedValues(diceValues);
+  const unique = [...new Set(sorted)];
+
+  const largeStraights = [
+    [1, 2, 3, 4, 5],
+    [2, 3, 4, 5, 6],
+  ];
+
+  for (const straight of largeStraights) {
+    if (straight.every((v) => unique.includes(v))) {
+      return diceValues.reduce((sum, v) => sum + v, 0);
+    }
   }
 
-  private sumMaxGroup(values: number[], counts: number[], target: number): number {
-    const face = counts.findIndex((c) => c >= target);
-    return face > 0 ? face * target : 0;
+  return 0;
+}
+
+function calculateChoice(diceValues: number[]): number {
+  return diceValues.reduce((sum, v) => sum + v, 0);
+}
+
+function calculateYacht(diceValues: number[]): number {
+  const counts = getDiceCounts(diceValues);
+
+  for (const count of counts.values()) {
+    if (count === 5) {
+      return SCORE_CONSTANTS.YACHT_BONUS;
+    }
   }
 
-  private isYacht(counts: number[]): boolean {
-    return counts.some((c) => c === 5);
+  return 0;
+}
+
+export function calculateAllPossibleScores(
+  diceValues: number[],
+): Map<ScoreCategory, number> {
+  const scores = new Map<ScoreCategory, number>();
+
+  for (const category of Object.values(ScoreCategory)) {
+    scores.set(category, calculateScore(category, diceValues));
   }
 
-  private isFullHouse(counts: number[]): boolean {
-    const has3 = counts.some((c) => c === 3);
-    const has2 = counts.some((c) => c === 2);
-    return has3 && has2;
-  }
-
-  private hasSmallStraight(values: number[]): boolean {
-    const set = new Set(values);
-    return (
-      (set.has(1) && set.has(2) && set.has(3) && set.has(4)) ||
-      (set.has(2) && set.has(3) && set.has(4) && set.has(5)) ||
-      (set.has(3) && set.has(4) && set.has(5) && set.has(6))
-    );
-  }
-
-  private scoreSmallStraight(values: number[]): number {
-    const set = new Set(values);
-    if (set.has(1) && set.has(2) && set.has(3) && set.has(4)) return 1 + 2 + 3 + 4;
-    if (set.has(2) && set.has(3) && set.has(4) && set.has(5)) return 2 + 3 + 4 + 5;
-    if (set.has(3) && set.has(4) && set.has(5) && set.has(6)) return 3 + 4 + 5 + 6;
-    return 0;
-  }
-
-  private hasLargeStraight(values: number[]): boolean {
-    const sorted = [...values].sort();
-    const is12345 = sorted.every((v, i) => v === i + 1);
-    const is23456 = sorted.every((v, i) => v === i + 2);
-    return is12345 || is23456;
-  }
+  return scores;
 }

@@ -1,57 +1,125 @@
-// 1¸íÀÇ ÅÏ ÁøÇà Ã³¸®
+import { GameState, GamePhase, ScoreCategory } from '../types';
+import { resetDiceSet, moveToNextPlayer, isGameComplete } from '../entities';
+import { rollDice } from './dice.service';
+import { calculateScore } from './score-calculator.service';
 
-/**
- * TurnService
- * - ÇÃ·¹ÀÌ ¼ø¼­¸¦ °ü¸®ÇÏ¸ç, °¢ ÅÏÀÇ ½ÃÀÛ/Á¾·á Èå¸§¸¸ ´ã´çÇÑ´Ù.
- * - ÁÖ»çÀ§ ±¼¸² / Á¡¼ö °è»ê / °ÔÀÓ Á¾·á ÆÇÁ¤Àº Æ÷ÇÔÇÏÁö ¾Ê´Â´Ù (SRP).
- */
+export interface TurnResult {
+  success: boolean;
+  message: string;
+  gameState: GameState;
+}
 
-import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { GameState } from '../entities/game-state';
-import { DiceService } from './dice.service';
-
-@Injectable()
-export class TurnService {
-  constructor(private readonly diceService: DiceService) {}
-
-  /**
-   * ÇöÀç activePlayer°¡ ¸Â´ÂÁö °ËÁõ
-   * - Controller/Service¿¡¼­ roll/selectCategory ¿äÃ» ½Ã È£Ãâ
-   */
-  validateActiveTurn(state: GameState, playerId: string): void {
-    const expectedPlayer = state.players[state.activePlayerIndex];
-    if (!expectedPlayer) {
-      throw new BadRequestException(`Invalid active player index: ${state.activePlayerIndex}`);
-    }
-    if (expectedPlayer.id !== playerId) {
-      throw new ForbiddenException(`Not this player's turn`);
-    }
-  }
-
-  /**
-   * ÅÏ Á¾·á ÈÄ ´ÙÀ½ ÇÃ·¹ÀÌ¾î·Î ÀÌµ¿
-   * - ScoreCalculatorService Àû¿ë ÀÌÈÄ È£Ãâ
-   * - GameFlowService.evaluateGameCompletion() ÀÌÀü¿¡ È£ÃâµÇ¾î¾ß ÇÔ
-   */
-  endTurn(state: GameState): GameState {
-    const nextState = this.diceService.resetForNextTurn(state);
-
-    const totalPlayers = nextState.players.length;
-    const isLastPlayerInRound = nextState.activePlayerIndex === totalPlayers - 1;
-
-    const nextActiveIndex = isLastPlayerInRound
-      ? 0
-      : nextState.activePlayerIndex + 1;
-
-    const nextRound = isLastPlayerInRound
-      ? nextState.round + 1
-      : nextState.round;
-
+export function startTurn(gameState: GameState): TurnResult {
+  if (gameState.phase !== GamePhase.WAITING && gameState.phase !== GamePhase.SCORING) {
     return {
-      ...nextState,
-      activePlayerIndex: nextActiveIndex,
-      round: nextRound,
-      updatedAt: Date.now(),
+      success: false,
+      message: 'í˜„ì¬ í„´ì„ ì‹œì‘í•  ìˆ˜ ì—†ëŠ” ìƒíƒœì…ë‹ˆë‹¤.',
+      gameState,
     };
   }
+
+  const newDiceSet = resetDiceSet(gameState.diceSet);
+  const rolledDiceSet = rollDice(newDiceSet);
+
+  return {
+    success: true,
+    message: 'í„´ì´ ì‹œì‘ë˜ì—ˆìŠµë‹ˆë‹¤.',
+    gameState: {
+      ...gameState,
+      diceSet: rolledDiceSet,
+      phase: GamePhase.ROLLING,
+      updatedAt: Date.now(),
+    },
+  };
+}
+
+export function performRoll(gameState: GameState): TurnResult {
+  if (gameState.phase !== GamePhase.ROLLING) {
+    return {
+      success: false,
+      message: 'ì£¼ì‚¬ìœ„ë¥¼ êµ´ë¦´ ìˆ˜ ì—†ëŠ” ìƒíƒœì…ë‹ˆë‹¤.',
+      gameState,
+    };
+  }
+
+  const newDiceSet = rollDice(gameState.diceSet);
+
+  if (newDiceSet === gameState.diceSet) {
+    return {
+      success: false,
+      message: 'ë” ì´ìƒ ì£¼ì‚¬ìœ„ë¥¼ êµ´ë¦´ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.',
+      gameState,
+    };
+  }
+
+  return {
+    success: true,
+    message: `ì£¼ì‚¬ìœ„ë¥¼ êµ´ë ¸ìŠµë‹ˆë‹¤. (${newDiceSet.rollCount}/3)`,
+    gameState: {
+      ...gameState,
+      diceSet: newDiceSet,
+      updatedAt: Date.now(),
+    },
+  };
+}
+
+export function selectCategory(
+  gameState: GameState,
+  category: ScoreCategory,
+): TurnResult {
+  if (gameState.phase !== GamePhase.ROLLING) {
+    return {
+      success: false,
+      message: 'ì ìˆ˜ë¥¼ ì„ íƒí•  ìˆ˜ ì—†ëŠ” ìƒíƒœì…ë‹ˆë‹¤.',
+      gameState,
+    };
+  }
+
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+
+  if (currentPlayer.scoreCard[category] !== null) {
+    return {
+      success: false,
+      message: 'ì´ë¯¸ ì„ íƒëœ ì¹´í…Œê³ ë¦¬ì…ë‹ˆë‹¤.',
+      gameState,
+    };
+  }
+
+  const score = calculateScore(category, gameState.diceSet.values);
+
+  const updatedPlayers = gameState.players.map((player, index) => {
+    if (index !== gameState.currentPlayerIndex) {
+      return player;
+    }
+
+    return {
+      ...player,
+      scoreCard: {
+        ...player.scoreCard,
+        [category]: score,
+      },
+    };
+  });
+
+  let updatedGameState: GameState = {
+    ...gameState,
+    players: updatedPlayers,
+    phase: GamePhase.SCORING,
+    updatedAt: Date.now(),
+  };
+
+  updatedGameState = moveToNextPlayer(updatedGameState);
+
+  if (isGameComplete(updatedGameState)) {
+    updatedGameState = {
+      ...updatedGameState,
+      phase: GamePhase.FINISHED,
+    };
+  }
+
+  return {
+    success: true,
+    message: `${category}ì— ${score}ì ì„ ê¸°ë¡í–ˆìŠµë‹ˆë‹¤.`,
+    gameState: updatedGameState,
+  };
 }

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: CLAUDE.md AI 개발 가이드 문서 추가\n\n- 프로젝트 개요 및 기술 스택 정리\n- TypeScript, NestJS, Tailwind CSS 코딩 규칙 정의\n- 하드코딩 금지 및 SOLID 원칙 가이드라인 포함\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run start:dev:*)",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_OwningProcess -Force }\")",
+      "Bash(taskkill:*)",
+      "Bash(exit 0)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"Stop-Process -Id 30660 -Force\")",
+      "Bash(curl:*)",
+      "Bash(GAME_ID=\"e1cd189a-cdde-43ca-bd88-bb0ec165880b\")",
+      "Bash(GAME_ID=\"88bf331e-0f32-42c7-a01e-9200777b5b68\")",
+      "Bash(npm create:*)",
+      "Bash(npm run dev:*)",
+      "Bash(dir nul)",
+      "Bash(rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

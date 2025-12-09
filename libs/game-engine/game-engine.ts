@@ -1,46 +1,159 @@
-/**
- * GameEngine
- * - 모든 게임 로직을 단일 인터페이스로 노출하는 퍼사드 계층.
- * - 내부적으로 DiceService / ScoreCalculatorService / TurnService / GameFlowService를 조합하지만
- *   엔진 사용자(Controller/Front/AI)는 GameEngine API만 알면 된다.
- */
-
-import { GameFlowService } from '../services/game-flow.service';
-import { DiceService } from '../services/dice.service';
-import { TurnService } from '../services/turn.service';
-import { ScoreCalculatorService } from '../services/score-calculator.service';
-
-import { GameState } from '../entities/game-state';
-import { Player } from '../entities/player';
-import { Category } from '../types/category.enum';
+import {
+  GameState,
+  GamePhase,
+  Player,
+  ScoreCategory,
+} from '../types';
+import {
+  createGameState,
+  addPlayerToGame,
+  getCurrentPlayer,
+  createPlayer,
+  toggleKeep,
+  setKeepStatus,
+  getTotalScore,
+} from '../entities';
+import {
+  startTurn,
+  performRoll,
+  selectCategory,
+  TurnResult,
+  calculateAllPossibleScores,
+} from '../services';
+import { GAME_CONSTANTS } from '../constants';
 
 export class GameEngine {
-  constructor(
-    private readonly gameFlow = new GameFlowService(),
-    private readonly dice = new DiceService(),
-    private readonly turn = new TurnService(new DiceService()),
-    private readonly score = new ScoreCalculatorService(),
-  ) {}
+  private gameState: GameState;
 
-  /** 게임 생성 */
-  create(gameId: string, players: Player[]): GameState {
-    return this.gameFlow.createInitialGameState(gameId, players);
+  constructor(gameId: string) {
+    this.gameState = createGameState(gameId);
   }
 
-  /** 현재 플레이어인지 검증 후 주사위 굴림 */
-  roll(state: GameState, playerId: string, keepIndexes: number[]): GameState {
-    this.turn.validateActiveTurn(state, playerId);
-    return this.dice.roll(state, keepIndexes);
+  getState(): GameState {
+    return this.gameState;
   }
 
-  /** 카테고리 선택 + 점수 계산 + 턴 종료 + 게임 종료 평가 */
-  selectCategory(state: GameState, playerId: string, category: Category): GameState {
-    this.turn.validateActiveTurn(state, playerId);
+  setState(state: GameState): void {
+    this.gameState = state;
+  }
 
-    let updated = this.score.assignCategoryScore(state, category);
-    updated = this.turn.endTurn(updated);
-    updated = this.gameFlow.evaluateGameCompletion(updated);
+  addPlayer(playerId: string, playerName: string): boolean {
+    if (this.gameState.players.length >= GAME_CONSTANTS.MAX_PLAYERS) {
+      return false;
+    }
 
-    return updated;
+    if (this.gameState.phase !== GamePhase.WAITING) {
+      return false;
+    }
+
+    const existingPlayer = this.gameState.players.find(
+      (p) => p.id === playerId,
+    );
+    if (existingPlayer) {
+      return false;
+    }
+
+    const player = createPlayer(playerId, playerName);
+    this.gameState = addPlayerToGame(this.gameState, player);
+    return true;
+  }
+
+  startGame(): boolean {
+    if (this.gameState.players.length < GAME_CONSTANTS.MIN_PLAYERS) {
+      return false;
+    }
+
+    if (this.gameState.phase !== GamePhase.WAITING) {
+      return false;
+    }
+
+    const result = startTurn(this.gameState);
+    if (result.success) {
+      this.gameState = result.gameState;
+    }
+    return result.success;
+  }
+
+  roll(): TurnResult {
+    const result = performRoll(this.gameState);
+    if (result.success) {
+      this.gameState = result.gameState;
+    }
+    return result;
+  }
+
+  toggleDiceKeep(index: number): boolean {
+    if (this.gameState.phase !== GamePhase.ROLLING) {
+      return false;
+    }
+
+    this.gameState = {
+      ...this.gameState,
+      diceSet: toggleKeep(this.gameState.diceSet, index),
+      updatedAt: Date.now(),
+    };
+    return true;
+  }
+
+  setDiceKeepStatus(keepStatus: boolean[]): boolean {
+    if (this.gameState.phase !== GamePhase.ROLLING) {
+      return false;
+    }
+
+    this.gameState = {
+      ...this.gameState,
+      diceSet: setKeepStatus(this.gameState.diceSet, keepStatus),
+      updatedAt: Date.now(),
+    };
+    return true;
+  }
+
+  selectScoreCategory(category: ScoreCategory): TurnResult {
+    const result = selectCategory(this.gameState, category);
+    if (result.success) {
+      this.gameState = result.gameState;
+
+      if (this.gameState.phase !== GamePhase.FINISHED) {
+        const turnResult = startTurn(this.gameState);
+        if (turnResult.success) {
+          this.gameState = turnResult.gameState;
+        }
+      }
+    }
+    return result;
+  }
+
+  getCurrentPlayer(): Player | null {
+    return getCurrentPlayer(this.gameState);
+  }
+
+  getPossibleScores(): Map<ScoreCategory, number> {
+    return calculateAllPossibleScores(this.gameState.diceSet.values);
+  }
+
+  getPlayerScores(): { player: Player; total: number }[] {
+    return this.gameState.players.map((player) => ({
+      player,
+      total: getTotalScore(player.scoreCard),
+    }));
+  }
+
+  getWinner(): Player | null {
+    if (this.gameState.phase !== GamePhase.FINISHED) {
+      return null;
+    }
+
+    const scores = this.getPlayerScores();
+    if (scores.length === 0) {
+      return null;
+    }
+
+    const maxScore = Math.max(...scores.map((s) => s.total));
+    const winner = scores.find((s) => s.total === maxScore);
+    return winner?.player ?? null;
+  }
+
+  isGameOver(): boolean {
+    return this.gameState.phase === GamePhase.FINISHED;
   }
 }

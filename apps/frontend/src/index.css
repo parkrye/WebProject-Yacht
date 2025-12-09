@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-wood-darker font-game text-white;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+}
+
+@layer components {
+  /* 나무 프레임 */
+  .wood-frame {
+    @apply bg-wood shadow-wood rounded-lg border-4 border-wood-dark;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.05) 2px,
+      rgba(0, 0, 0, 0.05) 4px
+    );
+  }
+
+  /* 붉은 펠트 테이블 */
+  .felt-table {
+    @apply bg-felt shadow-felt rounded-lg;
+    background-image: radial-gradient(
+      circle at 50% 50%,
+      rgba(255, 255, 255, 0.03) 0%,
+      transparent 70%
+    );
+  }
+
+  /* 골드 테두리 */
+  .gold-border {
+    @apply border-2 border-gold;
+    box-shadow: 0 0 5px rgba(218, 165, 32, 0.5);
+  }
+
+  /* 주사위 스타일 */
+  .dice {
+    @apply w-16 h-16 bg-dice-bg rounded-lg shadow-dice cursor-pointer
+           flex items-center justify-center relative
+           transition-all duration-200 hover:scale-105;
+  }
+
+  .dice.kept {
+    @apply shadow-dice-kept ring-2 ring-gold;
+  }
+
+  .dice-dot {
+    @apply absolute w-3 h-3 bg-dice-dot rounded-full;
+  }
+
+  /* 버튼 스타일 */
+  .btn-primary {
+    @apply px-6 py-3 bg-gold text-wood-darker font-bold rounded-lg
+           shadow-lg hover:bg-gold-light active:bg-gold-dark
+           transition-all duration-200 uppercase tracking-wider;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-wood text-white font-bold rounded-lg
+           shadow-md hover:bg-wood-light active:bg-wood-dark
+           transition-all duration-200;
+  }
+
+  /* 점수 카테고리 */
+  .score-category {
+    @apply px-4 py-2 bg-felt-dark/50 rounded cursor-pointer
+           hover:bg-felt-light/30 transition-colors duration-200
+           flex justify-between items-center;
+  }
+
+  .score-category.selected {
+    @apply bg-gold/20 text-gold;
+  }
+
+  .score-category.disabled {
+    @apply opacity-50 cursor-not-allowed hover:bg-felt-dark/50;
+  }
+
+  /* 게임 타이틀 */
+  .game-title {
+    @apply text-4xl font-bold text-gold drop-shadow-lg;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+}
