@@ -201,7 +201,7 @@ export function Scoreboard({
                 colSpan={players.length + 1}
                 className="py-1 px-2 sm:px-3 text-[10px] sm:text-xs font-bold text-gold uppercase tracking-wider"
               >
-                상단
+                스탠다드
               </td>
             </tr>
             {UPPER_CATEGORIES.map((category) => (
@@ -240,7 +240,7 @@ export function Scoreboard({
                 colSpan={players.length + 1}
                 className="py-1 px-2 sm:px-3 text-[10px] sm:text-xs font-bold text-gold uppercase tracking-wider"
               >
-                하단
+                스페셜
               </td>
             </tr>
             {LOWER_CATEGORIES.map((category) => (
