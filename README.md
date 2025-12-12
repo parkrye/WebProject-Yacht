@@ -10,6 +10,7 @@
 ---
 
 # 게임 플레이 가이드
+게임 URL: **https://yacht-dice-game.web.app**
 
 ## 게임 소개
 
